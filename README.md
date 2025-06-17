@@ -9,7 +9,7 @@ Requirements:
 Features:
 - tabs
 - open and save and print
-- index
+- table of content
 - navigation
 - opens pdf with password
 - text selection: ctrl+left mouse button
