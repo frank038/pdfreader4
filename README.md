@@ -5,7 +5,7 @@ Requirements:
 - python3
 - gtk4 bindings
 - poppler bindings
-- python3-cairo (optional for custom image annotation)
+- python3-cairo (optional for the custom image annotation)
 
 Features:
 - tabs
