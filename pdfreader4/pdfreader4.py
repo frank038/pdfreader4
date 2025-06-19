@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# V. 0.1
+# V. 0.2
 
 import os,sys,shutil,time
 import gi
@@ -11,6 +11,13 @@ from gi.repository import GdkPixbuf
 gi.require_version('Poppler', '0.18')
 from gi.repository import Poppler
 import json
+
+CAIRO_AVAILABLE = 0
+try:
+    import cairo
+    CAIRO_AVAILABLE = 1
+except:
+    CAIRO_AVAILABLE = 0
 
 
 # this program directory
@@ -25,7 +32,6 @@ try:
 except:
     print("Config file error.")
     sys.exit()
-
 
 # toolbar icon size
 ICON_SIZE = settings_conf["iconsize"]
@@ -48,7 +54,6 @@ _p_r = 1.0
 _p_g = 1.0
 _p_b = 1.0
 #
-
 if PAPER_COLOR:
     _p_r, _p_g, _p_b = [float(el)/65535 for el in PAPER_COLOR.split("/")]
     
@@ -74,7 +79,6 @@ _a_c_a = 1.0
 _a_c_r = 1.0
 _a_c_g = 0.91
 _a_c_b = 0.61
-# 
 if ANNOT_COLOR:
     _a_c_r, _a_c_g, _a_c_b = [float(el)/65535 for el in ANNOT_COLOR.split("/")]
 
@@ -431,7 +435,6 @@ class NewPage(Gtk.Box):
             da_tmp = self.list_da[page_num]
             da = da_tmp[0]
             # the total height up to this page
-            # da_total_height = da_tmp[1]
             da_total_height = da_tmp[1]*self._zoom_has_been_rectified
             # this page drawing area height
             da_heigth = da.get_height()
@@ -461,8 +464,6 @@ class NewPage(Gtk.Box):
         btn_i.set_pixel_size(ICON_SIZE)
     
     def notebook_add_new_page(self, _label):
-        #### the index
-        
         #### the pages
         # the box for the doc pages
         self.notebook_page_box = Gtk.Box.new(1,0)
@@ -490,7 +491,6 @@ class NewPage(Gtk.Box):
         self.buttons_box.append(self.lateral_panel_btn)
         #
         self.open_btn = Gtk.Button.new()
-        # self.open_btn.set_icon_name("document-open")
         self.add_btn_image(self.open_btn, "document-open")
         self.open_btn.set_tooltip_text("Load a new document")
         self.open_btn.connect("clicked", self.on_open_document)
@@ -528,7 +528,9 @@ class NewPage(Gtk.Box):
         #
         # whether the cursor has changed
         self.cursor_changed_annot = False
-        # ["Text", "Highlight", "Strike", "Underline", "Squiggly"]
+        # annotation type
+        self.annot_type = 0
+        #
         self.annot_btn = Gtk.MenuButton()
         self.add_btn_image(self.annot_btn, "help")
         self.annot_btn.set_tooltip_text("Annotations")
@@ -546,11 +548,197 @@ class NewPage(Gtk.Box):
         self.color_btn.set_rgba(_rgba)
         self.buttons_box.append(self.color_btn)
         #
+        # text annotation
         self.menu_pop = Gtk.PopoverMenu()
         self.annot_btn.set_popover(self.menu_pop)
-        _btn_annot_text = Gtk.Button(label="Text annotation")
-        _btn_annot_text.connect("clicked", self.on_btn_annot_text, 1)
-        self.menu_pop.set_child(_btn_annot_text)
+        #
+        self._mmenu = Gio.Menu.new()
+        self.menu_pop.set_menu_model(self._mmenu)
+        #
+        action_group = Gio.SimpleActionGroup()
+        self.annot_btn.insert_action_group('menu', action_group)
+        #
+        item_t = Gio.MenuItem.new('Text annotation', 'menu.text')
+        text_action = Gio.SimpleAction.new('text', None)
+        text_action.set_enabled(True)
+        text_action.activate(None)
+        text_action.connect('activate', self.on_btn_annot_text, 1)
+        self._mmenu.append_item(item_t)
+        action_group.add_action(text_action)
+        #
+        # ["Text", "Highlight", "Strike", "Underline", "Squiggly"]
+        # item_hl = Gio.MenuItem.new('Highlight', 'menu.highlight')
+        # highlight_action = Gio.SimpleAction.new('highlight', None)
+        # highlight_action.set_enabled(True)
+        # highlight_action.activate(None)
+        # highlight_action.connect('activate', self.on_btn_annot_text, 2)
+        # self._mmenu.append_item(item_hl)
+        # action_group.add_action(highlight_action)
+        #
+        item_sq = Gio.MenuItem.new('Square', 'menu.square')
+        sq_action = Gio.SimpleAction.new('square', None)
+        sq_action.set_enabled(True)
+        sq_action.activate(None)
+        sq_action.connect('activate', self.on_btn_annot_text, 3)
+        self._mmenu.append_item(item_sq)
+        action_group.add_action(sq_action)
+        #
+        item_cl = Gio.MenuItem.new('Cirlce', 'menu.circle')
+        cl_action = Gio.SimpleAction.new('circle', None)
+        cl_action.set_enabled(True)
+        cl_action.activate(None)
+        cl_action.connect('activate', self.on_btn_annot_text, 4)
+        self._mmenu.append_item(item_cl)
+        action_group.add_action(cl_action)
+        #
+        # item_ar = Gio.MenuItem.new('Arrow', 'menu.arrow')
+        # ar_action = Gio.SimpleAction.new('arrow', None)
+        # ar_action.set_enabled(True)
+        # ar_action.activate(None)
+        # ar_action.connect('activate', self.on_btn_annot_text, 6)
+        # self._mmenu.append_item(item_ar)
+        # action_group.add_action(ar_action)
+        #
+        item_ft = Gio.MenuItem.new('Free text', 'menu.ftext')
+        ft_action = Gio.SimpleAction.new('ftext', None)
+        ft_action.set_enabled(True)
+        ft_action.activate(None)
+        ft_action.connect('activate', self.on_btn_annot_text, 7)
+        self._mmenu.append_item(item_ft)
+        action_group.add_action(ft_action)
+        #
+        self.bmenu = Gio.Menu.new()
+        self._mmenu.append_submenu("Stamp", self.bmenu)
+        #
+        item_st0 = Gio.MenuItem.new('Unknown', 'menu.stamp0')
+        st_action0 = Gio.SimpleAction.new('stamp0', None)
+        st_action0.set_enabled(True)
+        st_action0.activate(None)
+        st_action0.connect('activate', self.on_btn_annot_text, 50)
+        self.bmenu.append_item(item_st0)
+        action_group.add_action(st_action0)
+        #
+        item_st1 = Gio.MenuItem.new('Approved', 'menu.stamp1')
+        st_action1 = Gio.SimpleAction.new('stamp1', None)
+        st_action1.set_enabled(True)
+        st_action1.activate(None)
+        st_action1.connect('activate', self.on_btn_annot_text, 51)
+        self.bmenu.append_item(item_st1)
+        action_group.add_action(st_action1)
+        #
+        item_st2 = Gio.MenuItem.new('Departmental', 'menu.stamp2')
+        st_action2 = Gio.SimpleAction.new('stamp2', None)
+        st_action2.set_enabled(True)
+        st_action2.activate(None)
+        st_action2.connect('activate', self.on_btn_annot_text, 52)
+        self.bmenu.append_item(item_st2)
+        action_group.add_action(st_action2)
+        #
+        item_st3 = Gio.MenuItem.new('For comment', 'menu.stamp3')
+        st_action3 = Gio.SimpleAction.new('stamp3', None)
+        st_action3.set_enabled(True)
+        st_action3.activate(None)
+        st_action3.connect('activate', self.on_btn_annot_text, 53)
+        self.bmenu.append_item(item_st3)
+        action_group.add_action(st_action3)
+        #
+        item_st4 = Gio.MenuItem.new('For pubblic release', 'menu.stamp4')
+        st_action4 = Gio.SimpleAction.new('stamp4', None)
+        st_action4.set_enabled(True)
+        st_action4.activate(None)
+        st_action4.connect('activate', self.on_btn_annot_text, 54)
+        self.bmenu.append_item(item_st4)
+        action_group.add_action(st_action4)
+        #
+        item_st5 = Gio.MenuItem.new('Top secret', 'menu.stamp5')
+        st_action5 = Gio.SimpleAction.new('stamp5', None)
+        st_action5.set_enabled(True)
+        st_action5.activate(None)
+        st_action5.connect('activate', self.on_btn_annot_text, 55)
+        self.bmenu.append_item(item_st5)
+        action_group.add_action(st_action5)
+        #
+        item_st6 = Gio.MenuItem.new('None', 'menu.stamp6')
+        st_action6 = Gio.SimpleAction.new('stamp6', None)
+        st_action6.set_enabled(True)
+        st_action6.activate(None)
+        st_action6.connect('activate', self.on_btn_annot_text, 56)
+        self.bmenu.append_item(item_st6)
+        action_group.add_action(st_action6)
+        #
+        item_st7 = Gio.MenuItem.new('As is', 'menu.stamp7')
+        st_action7 = Gio.SimpleAction.new('stamp7', None)
+        st_action7.set_enabled(True)
+        st_action7.activate(None)
+        st_action7.connect('activate', self.on_btn_annot_text, 57)
+        self.bmenu.append_item(item_st7)
+        action_group.add_action(st_action7)
+        #
+        item_st8 = Gio.MenuItem.new('Confidential', 'menu.stamp8')
+        st_action8 = Gio.SimpleAction.new('stamp8', None)
+        st_action8.set_enabled(True)
+        st_action8.activate(None)
+        st_action8.connect('activate', self.on_btn_annot_text, 58)
+        self.bmenu.append_item(item_st8)
+        action_group.add_action(st_action8)
+        #
+        item_st9 = Gio.MenuItem.new('Final', 'menu.stamp9')
+        st_action9 = Gio.SimpleAction.new('stamp9', None)
+        st_action9.set_enabled(True)
+        st_action9.activate(None)
+        st_action9.connect('activate', self.on_btn_annot_text, 59)
+        self.bmenu.append_item(item_st9)
+        action_group.add_action(st_action9)
+        #
+        item_st10 = Gio.MenuItem.new('Experimental', 'menu.stamp10')
+        st_action10 = Gio.SimpleAction.new('stamp10', None)
+        st_action10.set_enabled(True)
+        st_action10.activate(None)
+        st_action10.connect('activate', self.on_btn_annot_text, 60)
+        self.bmenu.append_item(item_st10)
+        action_group.add_action(st_action10)
+        #
+        item_st11 = Gio.MenuItem.new('Expired', 'menu.stamp11')
+        st_action11 = Gio.SimpleAction.new('stamp11', None)
+        st_action11.set_enabled(True)
+        st_action11.activate(None)
+        st_action11.connect('activate', self.on_btn_annot_text, 61)
+        self.bmenu.append_item(item_st11)
+        action_group.add_action(st_action11)
+        #
+        item_st12 = Gio.MenuItem.new('Not approved', 'menu.stamp12')
+        st_action12 = Gio.SimpleAction.new('stamp12', None)
+        st_action12.set_enabled(True)
+        st_action12.activate(None)
+        st_action12.connect('activate', self.on_btn_annot_text, 62)
+        self.bmenu.append_item(item_st12)
+        action_group.add_action(st_action12)
+        #
+        item_st13 = Gio.MenuItem.new('Not for pubblic release', 'menu.stamp13')
+        st_action13 = Gio.SimpleAction.new('stamp13', None)
+        st_action13.set_enabled(True)
+        st_action13.activate(None)
+        st_action13.connect('activate', self.on_btn_annot_text, 63)
+        self.bmenu.append_item(item_st13)
+        action_group.add_action(st_action13)
+        #
+        item_st14 = Gio.MenuItem.new('Sold', 'menu.stamp14')
+        st_action14 = Gio.SimpleAction.new('stamp14', None)
+        st_action14.set_enabled(True)
+        st_action14.activate(None)
+        st_action14.connect('activate', self.on_btn_annot_text, 64)
+        self.bmenu.append_item(item_st14)
+        action_group.add_action(st_action14)
+        #
+        #
+        if CAIRO_AVAILABLE == 1:
+            item_st15 = Gio.MenuItem.new('Custom image', 'menu.stamp15')
+            st_action15 = Gio.SimpleAction.new('stamp15', None)
+            st_action15.set_enabled(True)
+            st_action15.activate(None)
+            st_action15.connect('activate', self.on_btn_annot_text, 65)
+            self.bmenu.append_item(item_st15)
+            action_group.add_action(st_action15)
         #
         self.info_btn = Gtk.Button()
         self.add_btn_image(self.info_btn, "help")
@@ -694,10 +882,10 @@ class NewPage(Gtk.Box):
     def on_doc_save_f(self, source_obj, async_res):
         result = source_obj.choose_finish(async_res)
         if result == 1:
-            os.rename(self._file, self._file+"_bk")
+            os.rename(self._file, self._file+"pdfreader4_bk")
             ret = self.doc.save("file://{}".format(self._file))
             if ret:
-                MyDialog("Info", "File saved.\nThe previous file has been renamed:\n{}".format(os.path.basename(self._file))+"_bk", self.window)
+                MyDialog("Info", "File saved.\nThe previous file has been renamed:\n{}".format(os.path.basename(self._file))+"pdfreader4_bk", self.window)
             else:
                 MyDialog("Error", "Error while saving the file.", self.window)
         elif result == 0:
@@ -752,6 +940,7 @@ class NewPage(Gtk.Box):
             if _pw or _pw == "":
                 self.set_sensitive(True)
                 self.add_page(self._file, _pw)
+            #
         elif _id == -1:
             n_pages = self.window.notebook.get_n_pages()
             if n_pages == 1:
@@ -761,21 +950,99 @@ class NewPage(Gtk.Box):
                 self.window.notebook.remove_page(curr_page)
                 ib.hide()
     
-    def on_btn_annot_text(self, btn, _t):
-        if _t == 1:
+    def on_btn_annot_text(self, _action, _data, _t):
+        self.annot_type = _t
+        if _t == 1: # text
             self.cursor_changed_annot = True
             default = Gdk.Cursor.new_from_name("default")
             pointer = Gdk.Cursor.new_from_name("pointer", default)
             self.scrolledwindow.set_cursor(pointer)
             self.annot_btn.popdown()
-        
+        # square - circle
+        elif _t == 3 or _t == 4:
+            self.cursor_changed_annot = True
+            default = Gdk.Cursor.new_from_name("default")
+            pointer = Gdk.Cursor.new_from_name("pointer", default)
+            self.scrolledwindow.set_cursor(pointer)
+            self.annot_btn.popdown()
+        # stamp
+        elif _t in [50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65]:
+            self.cursor_changed_annot = True
+            default = Gdk.Cursor.new_from_name("default")
+            pointer = Gdk.Cursor.new_from_name("pointer", default)
+            self.scrolledwindow.set_cursor(pointer)
+            self.annot_btn.popdown()
+        # arrow
+        elif _t == 6:
+            self.cursor_changed_annot = True
+            default = Gdk.Cursor.new_from_name("default")
+            pointer = Gdk.Cursor.new_from_name("pointer", default)
+            self.scrolledwindow.set_cursor(pointer)
+            self.annot_btn.popdown()
+        # free text
+        elif _t == 7:
+            self.cursor_changed_annot = True
+            default = Gdk.Cursor.new_from_name("default")
+            pointer = Gdk.Cursor.new_from_name("pointer", default)
+            self.scrolledwindow.set_cursor(pointer)
+            self.annot_btn.popdown()
+        # markup
+        elif _t == 2:
+            if self.old_selection == None:
+                return
+            if self.old_selection:
+                # self.old_selection is a poppler.rectangle
+                self.annot_btn.popdown()
+                ##########
+                # TO DO
+                da = self.list_da[0][0]
+                page = self.doc.get_page(0)#(da.n_page))
+                #
+                ###################
+                _rect = Poppler.Rectangle.new()
+                _rect.x1 = 0
+                _rect.y1 = da.get_height()/self._zoom_has_been_rectified-0
+                _rect.x2 = 100
+                _rect.y2 = da.get_height()/self._zoom_has_been_rectified-100
+                #
+                _quad = Poppler.Quadrilateral.new()
+                # point.p1 - where?
+                _quad.p1.x = 0
+                _quad.p1.y = da.get_height()/self._zoom_has_been_rectified-100
+                # point.p2
+                _quad.p2.x = 100
+                _quad.p2.y = da.get_height()/self._zoom_has_been_rectified-100
+                # point.p3
+                _quad.p3.x = 100
+                _quad.p3.y = da.get_height()/self._zoom_has_been_rectified-0
+                # point.p4
+                _quad.p4.x = 0
+                _quad.p4.y = da.get_height()/self._zoom_has_been_rectified-0
+                #
+                quads = [_quad]
+                annot_mkup_h = Poppler.AnnotTextMarkup.new_highlight(self.doc, _rect, quads)
+                annot_mkup_h.set_contents("test")
+                #
+                _c = Poppler.Color.new()
+                _c.red = 60000
+                _c.green = 1
+                _c.blue = 1
+                annot_mkup_h.set_color(_c)
+                #
+                annot_mkup_h.set_quadrilaterals(quads)
+                #
+                page.add_annot(annot_mkup_h)
+                #
+                da.queue_draw()
+                #
+                return
+    
     def on_lateral_panel_btn(self, btn):
         if btn.get_active():
             self.index_box.show()
         else:
             self.index_box.hide()
         
-    # creare dialogo per la password
     def add_page(self, _file, _password=None):
         self._gfile = Gio.File.new_for_path(_file)
         try:
@@ -834,10 +1101,11 @@ class NewPage(Gtk.Box):
             self.populate_annotation_list()
             #
             da = Gtk.DrawingArea()
-            #
             # property: number of the page
             da.n_page = i
-            #
+            # self.da.set_content_width(page.get_size().width)
+            # self.da.set_content_height(page.get_size().height)
+            # # self.da.set_size_request(page_size.width,page_size.height)
             da.set_halign(Gtk.Align.CENTER)
             da.set_valign(Gtk.Align.CENTER)
             da.set_hexpand(True)
@@ -868,6 +1136,7 @@ class NewPage(Gtk.Box):
             #
             da.set_content_width(self.p_width*self._zoom)
             #
+            # self.has_been_drawn = 0
             da.set_draw_func(self.on_draw, page, 0)
             #
             ## dragging
@@ -886,7 +1155,6 @@ class NewPage(Gtk.Box):
             #
         # the width of the scrollingwindow widget
         self.scrolledwindow_width = 0
-        ########
     
     def create_index(self, doc):
         ######
@@ -902,7 +1170,7 @@ class NewPage(Gtk.Box):
             link_page_num = int(link.goto_dest.dest.page_num)
             link_pos_left = int(link.goto_dest.dest.left)
             link_pos_top = int(link.goto_dest.dest.top)
-            #
+            # 
             treeiter = self.model.append(None, [link_title, link_page_num, link_pos_left,link_pos_top])
             self.walk_index1(iterp, doc, treeiter)
             
@@ -918,8 +1186,10 @@ class NewPage(Gtk.Box):
     def walk_index1(self, iterp, doc, treeiter):
         if iterp == False:
             return
+            
         if iterp == None:
             return
+            
         child = iterp.get_child()
         if child:
             self.walk_index2(child, doc, treeiter)
@@ -929,13 +1199,12 @@ class NewPage(Gtk.Box):
                 break
             #
             link=iterp.get_action()
-            #
+            # .URI .GOTO_DEST
             if link.any.type == Poppler.ActionType.GOTO_DEST:
                 link_page_num = link.goto_dest.dest.page_num
                 link_title = link.any.title
                 link_pos_left = link.goto_dest.dest.left
                 link_pos_top = link.goto_dest.dest.top
-                #
                 treeiter = self.model.append(None, [link_title, link_page_num, link_pos_left,link_pos_top])
             else:
                 continue
@@ -953,9 +1222,7 @@ class NewPage(Gtk.Box):
                 link_title = link.any.title
                 link_pos_left = link.goto_dest.dest.left
                 link_pos_top = link.goto_dest.dest.top
-                #
                 treeiter_ch = self.model.append(treeiter, [link_title, link_page_num, link_pos_left,link_pos_top])
-                #
             child = iterp.get_child()
             if child:
                 self.walk_index2(child, doc, treeiter_ch)
@@ -974,6 +1241,7 @@ class NewPage(Gtk.Box):
                 default = Gdk.Cursor.new_from_name("default")
                 self.scrolledwindow.set_cursor(default)
                 self.cursor_changed_annot = False
+                self.annot_type = 0
         elif keyval == Gdk.KEY_Control_L and _t:
             self._control_pressed = 1
         ctrl = (state & Gdk.ModifierType.CONTROL_MASK)
@@ -992,7 +1260,7 @@ class NewPage(Gtk.Box):
                 break
     
     def on_draw(self, da, cr, width, height, page, _type):
-        if self._control_pressed == 0:
+        if self._control_pressed == 0 and self.annot_type == 0:
             self.scrolledwindow_width = self.scrolledwindow.get_width()
         #
         _zoom_to_fit = (self.scrolledwindow_width/self.p_width)
@@ -1012,7 +1280,6 @@ class NewPage(Gtk.Box):
         da.set_content_width(page.get_size().width*_zoom)
         da.set_content_height(page.get_size().height*_zoom)
         #
-        # needed
         cr.scale(_zoom, _zoom)
         # paper colour
         cr.set_source_rgb(_p_r, _p_g, _p_b)
@@ -1021,12 +1288,17 @@ class NewPage(Gtk.Box):
         #
         cr.rectangle (x,y,page.get_size().width,page.get_size().height)
         cr.fill()
+        # border around the page
+        cr.set_source_rgb(0.5,0.5,0.5)
+        cr.rectangle (x,y,page.get_size().width,page.get_size().height)
+        cr.stroke()
         #
         # page.render(cr)
         page.render_full(cr,False,Poppler.RenderAnnotsFlags.PRINT_ALL)
         #
+        #
         ########## text hightlight
-        if self._control_pressed == 1:
+        if self._control_pressed == 1 and self.annot_type == 0:
             # selection style: GLYPH WORD LINE
             _style = Poppler.SelectionStyle.GLYPH
             # text colour
@@ -1053,11 +1325,25 @@ class NewPage(Gtk.Box):
             _selection.x2 = x2
             _selection.y1 = y1
             _selection.y2 = y2
-            #
+            
             self.render_selection = page.render_selection(cr, _selection, _selection, _style, _g, _b)
             self.old_selection = _selection
         ########## end text hightlight
-    
+        ##########
+        ### rubberband for annotations
+        elif self.annot_type in [3,4,6,7,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65]:
+            w = self.end_x/self._zoom_has_been_rectified
+            h = self.end_y/self._zoom_has_been_rectified
+            # adding a border
+            cr.set_source_rgba(0, 0, 0, 0.5)
+            cr.set_line_width(1.0)
+            cr.rectangle(self.start_x/self._zoom_has_been_rectified,self.start_y/self._zoom_has_been_rectified,w,h)
+            cr.stroke()
+            #
+            cr.set_source_rgba(1.0, 0.0, 0.0, 0.2)
+            cr.rectangle(self.start_x/self._zoom_has_been_rectified,self.start_y/self._zoom_has_been_rectified,w,h)
+            cr.fill()
+        
     # show dialog after load
     def showDialog(self, title,x,y,da, _text):
         dialog = MessageBox(title, self.window, x,y,da, _text)
@@ -1069,11 +1355,12 @@ class NewPage(Gtk.Box):
             case Gtk.ResponseType.OK:
                 if _annot == None:
                     self.add_annotation(widget.get_text(), widget.data)
-                # # do not remove
-                # else:
-                    # _annot_text = _annot.annot.get_contents()
-                    # _annot.annot.set_contents(_annot_text)
-                    # _page.add_annot(_annot.annot)
+                # modify the annotation text - useless
+                else:
+                    _annot_text = _annot.annot.get_contents()
+                    _annot.annot.set_contents(_annot_text)
+                    # repopulate the list
+                    self.populate_annotation_list()
                 widget.destroy()
             #
             case Gtk.ResponseType.CANCEL:
@@ -1083,57 +1370,331 @@ class NewPage(Gtk.Box):
                 widget.destroy()
     
     def add_annotation(self, _txt, data):
+        if self._control_pressed == 1:
+            return
         x = data[0]
         y = data[1]
         da = data[2]
         #
-        rect = Poppler.Rectangle.new()
-        # lower left
-        x1 = x/self._zoom_has_been_rectified
-        # upper right
-        x2 = x/self._zoom_has_been_rectified
-        # lower left
-        y1 = (da.get_height()-y)/self._zoom_has_been_rectified
-        # upper right
-        y2 = (da.get_height()-y)/self._zoom_has_been_rectified
-        #
-        rect.x1 = x1
-        rect.x2 = x2+24
-        rect.y1 = y1
-        rect.y2 = y2+24
-        annot_text = Poppler.AnnotText.new(self.doc, rect)
-        annot_text.set_contents(_txt)
-        
-        _color = self.color_btn.get_rgba()
-        _c = Poppler.Color.new()
-        _c.red = _color.red*65535
-        _c.green = _color.green*65535
-        _c.blue = _color.blue*65535
-        annot_text.set_color(_c)
-        
-        annot_text.set_flags(Poppler.AnnotFlag.PRINT|Poppler.AnnotFlag.NO_ZOOM|Poppler.AnnotFlag.NO_ROTATE)
-        
-        page = self.doc.get_page((da.n_page))
-        page.add_annot(annot_text)
-        #
-        self.cursor_changed_annot = False
-        del annot_text
-        #
-        da.queue_draw()
-        # repopulate the list
-        self.populate_annotation_list()
-        
+        if self.annot_type == 1:
+            rect = Poppler.Rectangle.new()
+            # lower left
+            x1 = x/self._zoom_has_been_rectified
+            # upper right
+            x2 = x/self._zoom_has_been_rectified
+            # lower left
+            y1 = (da.get_height()-y)/self._zoom_has_been_rectified
+            # upper right
+            y2 = (da.get_height()-y)/self._zoom_has_been_rectified
+            rect.x1 = x1
+            rect.x2 = x2+24
+            rect.y1 = y2-24
+            rect.y2 = y1
+            annot_text = Poppler.AnnotText.new(self.doc, rect)
+            annot_text.set_contents(_txt)
+            #
+            _color = self.color_btn.get_rgba()
+            _c = Poppler.Color.new()
+            _c.red = _color.red*65535
+            _c.green = _color.green*65535
+            _c.blue = _color.blue*65535
+            annot_text.set_color(_c)
+            annot_text.set_opacity(_color.alpha)
+            #
+            annot_text.set_flags(Poppler.AnnotFlag.PRINT|Poppler.AnnotFlag.NO_ZOOM|Poppler.AnnotFlag.NO_ROTATE)
+            #
+            page = self.doc.get_page((da.n_page))
+            page.add_annot(annot_text)
+            #
+            self.cursor_changed_annot = False
+            del annot_text
+            #
+            da.queue_draw()
+            # repopulate the list
+            self.populate_annotation_list()
+        # square - circle
+        elif self.annot_type in [3,4,7]:
+            page = self.doc.get_page((da.n_page))
+            rect = Poppler.Rectangle.new()
+            x1 = self.start_x/self._zoom_has_been_rectified
+            y1 = (da.get_height()-self.start_y)/self._zoom_has_been_rectified
+            x2 = (self.start_x+self.end_x)/self._zoom_has_been_rectified
+            y2 = (da.get_height()-self.start_y-self.end_y)/self._zoom_has_been_rectified
+            #
+            rect.x1 = x1
+            rect.x2 = x2
+            rect.y1 = y1
+            rect.y2 = y2
+            # square - circle
+            if self.annot_type == 3 or self.annot_type == 4 or self.annot_type == 7:
+                if self.annot_type == 3: # square
+                    _annot = Poppler.AnnotSquare.new(self.doc, rect)
+                elif self.annot_type == 4: # circle
+                    _annot = Poppler.AnnotCircle.new(self.doc, rect)
+                elif self.annot_type == 7: # free text
+                    _annot = Poppler.AnnotFreeText.new(self.doc, rect)
+                # 
+                _color = self.color_btn.get_rgba()
+                _c = Poppler.Color.new()
+                _c.red = _color.red*65535
+                _c.green = _color.green*65535
+                _c.blue = _color.blue*65535
+                if self.annot_type != 7:
+                    _annot.set_interior_color(_c)
+                    #
+                    _c = Poppler.Color.new()
+                    _c.red = 15000
+                    _c.green = 15000
+                    _c.blue = 15000
+                    _annot.set_color(_c)
+                else:
+                    _annot.set_color(_c)
+                #
+                _annot.set_flags(Poppler.AnnotFlag.PRINT|Poppler.AnnotFlag.NO_ZOOM|Poppler.AnnotFlag.NO_ROTATE)
+                if self.annot_type != 7:
+                    _annot.set_opacity(_color.alpha)
+            # 
+            page.add_annot(_annot)
+            # set the content
+            _annot.set_contents(_txt)
+            #
+            da.queue_draw()
+            # repopulate the list
+            self.populate_annotation_list()
+            ### reset
+            self.cursor_changed_annot = False
+            #
+            self.start_x = 0
+            self.start_y = 0
+            self.end_x = 0
+            self.end_y = 0
+            #
+            self.annot_type = 0
+        elif self.annot_type in [50,51,52,53,54,55,56,57,58,59,60,61,62,63,64]:
+            page = self.doc.get_page(da.n_page)
+            #
+            rect = Poppler.Rectangle.new()
+            x1 = self.start_x/self._zoom_has_been_rectified
+            y1 = (da.get_height()-self.start_y)/self._zoom_has_been_rectified
+            x2 = (self.start_x+self.end_x)/self._zoom_has_been_rectified
+            y2 = (da.get_height()-self.start_y-self.end_y)/self._zoom_has_been_rectified
+            #
+            rect.x1 = x1
+            rect.x2 = x2
+            rect.y1 = y1
+            rect.y2 = y2
+            # 
+            annot_stamp = Poppler.AnnotStamp.new(self.doc, rect)
+            #
+            _stamp_code_list = [0,1,10,11,12,13,14,2,3,4,5,6,7,8,9]
+            _stamp_list = [50,51,52,53,54,55,56,57,58,59,60,61,62,63,64]
+            _code = _stamp_code_list[_stamp_list.index(self.annot_type)]
+            #
+            annot_stamp.set_icon(_code)
+            #
+            # icons:
+            # Poppler.AnnotStampIcon.
+            # UNKNOWN= 0
+            # APPROVED= 1
+            # DEPARTMENTAL= 10
+            # FOR_COMMENT= 11
+            # FOR_PUBLIC_RELEASE= 12
+            # TOP_SECRET= 13
+            # NONE= 14
+            # AS_IS= 2
+            # CONFIDENTIAL= 3
+            # FINAL= 4
+            # EXPERIMENTAL= 5
+            # EXPIRED= 6
+            # NOT_APPROVED= 7
+            # NOT_FOR_PUBLIC_RELEASE= 8
+            # SOLD= 9
+            annot_stamp.set_contents(_txt)
+            #
+            _color = self.color_btn.get_rgba()
+            _c = Poppler.Color.new()
+            _c.red = _color.red*65535
+            _c.green = _color.green*65535
+            _c.blue = _color.blue*65535
+            annot_stamp.set_color(_c)
+            annot_stamp.set_opacity(_color.alpha)
+            #
+            page.add_annot(annot_stamp)
+            #
+            da.queue_draw()
+            # repopulate the list
+            self.populate_annotation_list()
+            ### reset
+            self.cursor_changed_annot = False
+            #
+            self.start_x = 0
+            self.start_y = 0
+            self.end_x = 0
+            self.end_y = 0
+            #
+            self.annot_type = 0
+        # stamp custom image
+        elif self.annot_type == 65:
+                file_dialog = Gtk.FileDialog()
+                file_dialog.set_title("Choose a png file...")
+                file_dialog.set_modal(True)
+                file_dialog.set_initial_folder(Gio.File.new_for_path(os.path.expanduser("~")))
+                ret=file_dialog.open(self.window, None, self.on_add_custom_image, [_txt,da])
+        # arrow
+        elif self.annot_type == 6:
+            rect = Poppler.Rectangle.new()
+            # top to bottom
+            if self.start_x <= (self.start_x+self.end_x) and self.start_y <= (self.start_y+self.end_y):
+                x1 = self.start_x/self._zoom_has_been_rectified
+                y1 = (da.get_height()-self.start_y)/self._zoom_has_been_rectified
+                x2 = (self.start_x+self.end_x)/self._zoom_has_been_rectified
+                y2 = (da.get_height()-self.start_y-self.end_y)/self._zoom_has_been_rectified
+            elif self.start_x > (self.start_x+self.end_x) and self.start_y > (self.start_y+self.end_y):
+                return
+            #
+            rect.x1 = x1
+            rect.x2 = x2
+            rect.y1 = y1
+            rect.y2 = y2
+            #
+            starting_point = Poppler.Point.new()
+            ending_point = Poppler.Point.new()
+            # top to bottom
+            if self.start_x<=(self.start_x+self.end_x) and self.start_y<=(self.start_y+self.end_y):
+                starting_point.x = self.start_x/self._zoom_has_been_rectified
+                starting_point.y = self.start_y/self._zoom_has_been_rectified
+                #
+                ending_point.x = (self.start_x+self.end_y)/self._zoom_has_been_rectified
+                ending_point.y = (self.start_y+self.end_y)/self._zoom_has_been_rectified
+            elif self.start_x > (self.start_x+self.end_x) and self.start_y > (self.start_y+self.end_y):
+                pass
+            #
+            _annot = Poppler.AnnotLine.new(self.doc,rect,starting_point,ending_point)
+            _annot.set_vertices(starting_point,ending_point)
+            _color = self.color_btn.get_rgba()
+            _c = Poppler.Color.new()
+            _c.red = _color.red*65535
+            _c.green = _color.green*65535
+            _c.blue = _color.blue*65535
+            _annot.set_color(_c)
+            #
+            _annot.set_flags(Poppler.AnnotFlag.PRINT|Poppler.AnnotFlag.NO_ZOOM|Poppler.AnnotFlag.NO_ROTATE)
+            _annot.set_opacity(_color.alpha)
+            #
+            page = self.doc.get_page((da.n_page))
+            page.add_annot(_annot)
+            # set the content
+            _annot.set_contents(_txt)
+            #
+            da.queue_draw()
+            # repopulate the list
+            self.populate_annotation_list()
+            ### reset
+            self.cursor_changed_annot = False
+            #
+            self.start_x = 0
+            self.start_y = 0
+            self.end_x = 0
+            self.end_y = 0
+            #
+            self.annot_type = 0
     
-    # _t 1 pressed 0 released
+    # stamp custom image
+    def on_add_custom_image(self, source_object, res, data):
+        try:
+            _txt = data[0]
+            da = data[1]
+            #
+            gfile = source_object.open_finish(res)
+            _file = gfile.get_path()
+            if os.path.exists(_file) and os.access(_file, os.R_OK):
+                page = self.doc.get_page(da.n_page)
+                #
+                _image = _file
+                _img = GdkPixbuf.Pixbuf.new_from_file(_image)
+                _img_w = _img.get_width()
+                _img_h = _img.get_height()
+                #
+                rect = Poppler.Rectangle.new()
+                if _img_w > 0 and _img_h > 0:
+                    x1 = self.start_x/self._zoom_has_been_rectified
+                    y1 = (da.get_height()-self.start_y)/self._zoom_has_been_rectified
+                    x2 = (self.start_x+self.end_x)/self._zoom_has_been_rectified
+                    yy = _img_h/(_img_w/self.end_x)
+                    y2 = (da.get_height()-self.start_y-yy)/self._zoom_has_been_rectified
+                else:
+                    x1 = self.start_x/self._zoom_has_been_rectified
+                    y1 = (da.get_height()-self.start_y)/self._zoom_has_been_rectified
+                    x2 = (self.start_x+self.end_x)/self._zoom_has_been_rectified
+                    y2 = (da.get_height()-self.start_y-self.end_y)/self._zoom_has_been_rectified
+                #
+                rect.x1 = x1
+                rect.x2 = x2
+                rect.y1 = y1
+                rect.y2 = y2
+                # 
+                annot_stamp = Poppler.AnnotStamp.new(self.doc, rect)
+                #
+                custom_image = cairo.ImageSurface.create_from_png(_image)
+                annot_stamp.set_custom_image(custom_image)
+                #
+                annot_stamp.set_contents(_txt)
+                #
+                _color = self.color_btn.get_rgba()
+                _c = Poppler.Color.new()
+                _c.red = _color.red*65535
+                _c.green = _color.green*65535
+                _c.blue = _color.blue*65535
+                annot_stamp.set_color(_c)
+                annot_stamp.set_opacity(_color.alpha)
+                #
+                page.add_annot(annot_stamp)
+                #
+                da.queue_draw()
+                # repopulate the list
+                self.populate_annotation_list()
+                ### reset
+                self.cursor_changed_annot = False
+                #
+                self.start_x = 0
+                self.start_y = 0
+                self.end_x = 0
+                self.end_y = 0
+                #
+                self.annot_type = 0
+        except Exception as E:
+            MyDialog("Error", str(E), self.window)
+    
+    def find_annot(self, da, x , y):
+        # el = [n_page, [list of annotations]]
+        page = da.n_page
+        x = x/self._zoom_has_been_rectified
+        y = y/self._zoom_has_been_rectified
+        i = 0
+        # _annot_text = ""
+        _annot = None
+        for el in self.list_annotations:
+            if el[0] == page:
+                for annot in el[1]:
+                    if annot.area.x1 < x < annot.area.x2:
+                        if annot.area.y1 < self.calculate_pos_in_page(y, self.list_da[0][0].get_height())/self._zoom_has_been_rectified < annot.area.y2:
+                            _annot = annot
+                            break
+        #
+        return _annot
+    
+    # _t: 1 pressed 0 released
     def on_da_gesture_l(self, o,n,x,y, da, _t):
         if _t == 1:
+            self.left_click_setted = 1
             if self.cursor_changed_annot == True:
                 # reset the cursor
                 self.cursor_changed = False
                 default = Gdk.Cursor.new_from_name("default")
                 self.scrolledwindow.set_cursor(default)
-                # control
-                self.showDialog("Add the annotation",x,y,da,None)
+                #
+                if self.annot_type == 1:
+                    self.showDialog("Add the annotation",x,y,da,None)
                 return
             else:
                 if self._control_pressed == 0:
@@ -1143,11 +1704,19 @@ class NewPage(Gtk.Box):
                     self.left_click_setted = 1
                     # reset
                     self.selected_text = ""
+                    # remove the selection on the text
+                    da.queue_draw()
                 return
         else:
+            ## draw the annotations
+            # type square
+            if self.annot_type in [3,4,6,7,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65]:
+                self.showDialog("Add the annotation",x,y,da,None)
+            #
+            # reset
             self.left_click_setted = 0
         #
-        ##### 
+        ##### funzione rimpiazzo
         _annot = self.find_annot(da, x , y)
         _annot_text = None
         if _annot:
@@ -1155,29 +1724,10 @@ class NewPage(Gtk.Box):
         #
         if _annot_text == None:
             return
-        if _annot_text == "":
-            return
-        #
-        else:
+        if _annot_text == "" or _annot_text != None:
+        # else:
             MyDialog("Annotation", _annot_text, self.window)
-        
-    def find_annot(self, da, x , y):
-        page = da.n_page
-        x = x/self._zoom_has_been_rectified
-        y = y/self._zoom_has_been_rectified
-        i = 0
-        _annot = None
-        for el in self.list_annotations:
-            if el[0] == page:
-                for annot in el[1]:
-                    # 
-                    if annot.area.x1 < x < annot.area.x2:
-                        if annot.area.y1 < self.calculate_pos_in_page(y, self.list_da[0][0].get_height())/self._zoom_has_been_rectified < annot.area.y2:
-                            _annot = annot
-                            break
-        #
-        return _annot
-        
+    
     def on_da_gesture_c(self, o,n,x,y,da):
         page = da.n_page
         _adjh = self.hscrollbar.get_adjustment()
@@ -1200,7 +1750,8 @@ class NewPage(Gtk.Box):
                             if annot.area.y1 < self.calculate_pos_in_page(y, self.list_da[0][0].get_height())/self._zoom_has_been_rectified < annot.area.y2:
                                 self.on_remove_annot(da, annot.annot)
                                 break
-            #
+            
+            ### funziona
             if self.selected_text != "":
                 self.popover = Gtk.PopoverMenu()
                 btn_01 = Gtk.Button(label="Copy to clipboard")
@@ -1238,24 +1789,18 @@ class NewPage(Gtk.Box):
     def on_da_gesture_d_b(self, gesture_drag, start_x, start_y, da):
         self.start_x = start_x
         self.start_y = start_y
-        #
-        page = self.doc.get_page(da.n_page)
-        ret = page.get_text_layout()
-        #
-        if ret[0]:
-            self.list_page_text_rectangles = ret[1]
-    
+        
     # drag update
     def on_da_gesture_d_u(self, gesture_drag, offset_x, offset_y, da):
         # reset
         self.list_r = []
         self.dradding_text = ""
         #
-        if self._control_pressed == 1 and offset_x > 0 and offset_y > 0:
+        if (self._control_pressed == 1 or self.annot_type != 0):# and offset_x > 0 and offset_y > 0:
             self.end_x = offset_x
             self.end_y = offset_y
             da.queue_draw()
-        
+    
     def poprect_to_gdkrect(self, prect):
         x1 = prect.x1*self._zoom
         x2 = prect.x2*self._zoom
@@ -1283,18 +1828,18 @@ class NewPage(Gtk.Box):
             self.selected_text = page.get_selected_text(Poppler.SelectionStyle.GLYPH, self.old_selection)
         #
         # reset
-        self.start_x = 0
-        self.start_y = 0
-        self.end_x = 0
-        self.end_y = 0
+        if self.annot_type == 0:
+            self.start_x = 0
+            self.start_y = 0
+            self.end_x = 0
+            self.end_y = 0
         self.list_page_text_rectangles = []
         self.list_r = []
         #
         # the poppler render selection object
         self.render_selection = None
-        
 
-# from dialog to widget
+
 class MessageBox(Gtk.Dialog):
     def __init__ (self, text, parent,x,y,da,_text):
         super ().__init__()
@@ -1342,4 +1887,4 @@ def main():
 
 if __name__ == '__main__':
     main()
- 
+
