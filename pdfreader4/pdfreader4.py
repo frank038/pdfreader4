@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# V. 0.2
+# V. 0.3
 
 import os,sys,shutil,time
 import gi
@@ -323,6 +323,9 @@ class NewPage(Gtk.Box):
         
         self.add_index_section()
         
+        # links mapping list - [poppler.page, [list of linkMapping]]
+        self.list_links = []
+        
         self.notebook_add_new_page(os.path.basename(self._file))
         self.add_page(self._file)
     
@@ -515,13 +518,13 @@ class NewPage(Gtk.Box):
         self.buttons_box.append(self.zoom_btn_m)
         #
         self.prev_page = Gtk.Button()
-        self.add_btn_image(self.prev_page, "previous")
+        self.add_btn_image(self.prev_page, "go-previous")
         self.prev_page.set_tooltip_text("Previous page")
         self.prev_page.connect("clicked", self.on_change_page, -1)
         self.buttons_box.append(self.prev_page)
         #
         self.next_page = Gtk.Button()
-        self.add_btn_image(self.next_page, "next")
+        self.add_btn_image(self.next_page, "go-next")
         self.next_page.set_tooltip_text("Next page")
         self.next_page.connect("clicked", self.on_change_page, 1)
         self.buttons_box.append(self.next_page)
@@ -532,7 +535,7 @@ class NewPage(Gtk.Box):
         self.annot_type = 0
         #
         self.annot_btn = Gtk.MenuButton()
-        self.add_btn_image(self.annot_btn, "help")
+        self.add_btn_image(self.annot_btn, "document-edit")
         self.annot_btn.set_tooltip_text("Annotations")
         self.buttons_box.append(self.annot_btn)
         # annotation colour dialog
@@ -740,6 +743,38 @@ class NewPage(Gtk.Box):
             self.bmenu.append_item(item_st15)
             action_group.add_action(st_action15)
         #
+        self.border_width_cb = Gtk.ComboBoxText()
+        self.border_width_cb.set_tooltip_text("Annotation border width")
+        for el in ["1","2","3","4","5","6"]:
+            self.border_width_cb.append_text(el)
+        self.border_width_cb.set_active(0)
+        self.buttons_box.append(self.border_width_cb)
+        #
+        self.search_entry = Gtk.SearchEntry()
+        self.buttons_box.append(self.search_entry)
+        # the text to search
+        self.search_text = ""
+        # [n_page , [_rects of the n_page]]
+        self.search_in_page = []
+        # the current rect in searching action
+        self.current_rect = -1
+        # the current page while searching
+        self.current_page = -1
+        # the rectangle of the word found
+        self.search_rect = None
+        #
+        self.btn_search_p = Gtk.Button()
+        self.add_btn_image(self.btn_search_p, "go-previous")
+        self.btn_search_p.set_tooltip_text("Previous")
+        self.btn_search_p.connect("clicked", self.on_search_btn, -1)
+        self.buttons_box.append(self.btn_search_p)
+        #
+        self.btn_search_n = Gtk.Button()
+        self.add_btn_image(self.btn_search_n, "go-next")
+        self.btn_search_n.set_tooltip_text("Next")
+        self.btn_search_n.connect("clicked", self.on_search_btn, 1)
+        self.buttons_box.append(self.btn_search_n)
+        #
         self.info_btn = Gtk.Button()
         self.add_btn_image(self.info_btn, "help")
         self.info_btn.set_tooltip_text("Document info")
@@ -765,7 +800,7 @@ class NewPage(Gtk.Box):
         self.buttons_box.append(self.save_as_btn)
         #
         self.exit_btn = Gtk.Button()
-        self.add_btn_image(self.exit_btn, "exit")
+        self.add_btn_image(self.exit_btn, "window-close")
         self.exit_btn.set_tooltip_text("Close this program")
         self.exit_btn.connect("clicked", self.on_exit)
         self.buttons_box.append(self.exit_btn)
@@ -799,6 +834,153 @@ class NewPage(Gtk.Box):
         self.infobar_pw.connect("response", self.on_infobar_pw_btn)
         self.window.main_box.append(self.infobar_pw)
         self.infobar_pw.hide()
+        
+    # _p : -1 previous 1 next
+    def on_search_btn(self, btn, _p):
+        # 
+        if self.current_rect == -99:
+            self.current_rect = -1
+        #
+        _text = self.search_entry.get_text()
+        # minimum three characters to perform a query
+        if len(_text) < 3:
+            return
+        #
+        if _text != self.search_text:
+            # the text to search
+            self.search_text = _text
+            # [n_page , [_rects]]
+            self.search_in_page = []
+            # the current rect in searching action: index
+            self.current_rect = -1
+            # the current page while searching
+            self.current_page = -1
+        #
+        if _text == "":
+            return
+        # check if has been reached the end of the beginning of the document
+        # _page = 0
+        if self.current_page == -1:
+            if _p == 1:
+                # MyDialog("Info", "End of the searching.", self.window)
+                _page = 0
+                self.current_page = _page
+            elif _p == -1:
+                # MyDialog("Info", "End of the document.", self.window)
+                _page = self.doc.get_n_pages()-1
+                self.current_page = _page
+        else:
+            _page = self.current_page
+        #
+        self.search_in_page = []
+        #
+        page = self.doc.get_page(_page)
+        #
+        _rects2 = page.find_text(_text)
+        #
+        # options = Poppler.FindFlags.DEFAULT
+        # _rects2 = page.find_text_with_options(_text, options)
+        #
+        # if _p == 1:
+            # _rects = _rects2[::-1]
+        # elif _p == -1:
+            # _rects = _rects2[::-1]
+        _rects = _rects2
+        #
+        if self.search_in_page == []:
+            self.search_in_page = [_page,_rects]
+            self.current_page = _page
+        #
+        # skip the page without the searching text in it
+        if _rects == []:
+            if _p == 1:
+                n_pages = self.doc.get_n_pages()
+                if self.current_page+1 < n_pages and n_pages > 1:
+                    self.current_page += 1
+                    self.search_in_page = []
+                    self.current_rect = -1
+                    self.on_search_btn(btn, _p)
+                else:
+                    if self.current_rect == -1:
+                        MyDialog("Searching", "Nothing found", self.window)
+                    self.current_page = 0
+                    self.search_in_page = []
+                    self.current_rect = -99
+                    return
+            elif _p == -1:
+                n_pages = self.doc.get_n_pages()
+                # if self.current_page == 0 and self.doc.get_n_pages() > 1:
+                if self.current_page-1 < 0 and n_pages > 1:
+                    self.current_page = self.doc.get_n_pages() - 1
+                    self.search_in_page = []
+                    self.current_rect = -1
+                    self.on_search_btn(btn, _p)
+                else:
+                    if self.current_rect == -1:
+                        MyDialog("Searching", "Nothing found", self.window)
+                    self.current_page = 0
+                    self.search_in_page = []
+                    self.current_rect = -99
+                    return
+        #
+        if self.current_rect == -99:
+            return
+        # scroll to top
+        vadjustment = self.scrolledwindow.get_vadjustment()
+        vadjustment.set_value(0)
+        #
+        if self.current_rect == -1:
+            if _p == 1:
+                _r = _rects[0]
+                self.current_rect = 0
+            elif _p == -1:
+                _r = _rects[-1]
+                self.current_rect = len(_rects)-1
+        else:
+            _r = _rects[self.current_rect]
+        #
+        y1 = _r.y1
+        self.search_rect = _r
+        #
+        page_num = self.search_in_page[0]
+        da_tmp = self.list_da[page_num]
+        da = da_tmp[0]
+        # the total height up to this page
+        da_total_height = da_tmp[1]*self._zoom_has_been_rectified
+        # this page drawing area height
+        da_heigth = da.get_height()
+        scroll_y = da_total_height-da_heigth+(self._pad_around_page*page_num)
+        ret = da_heigth/self._zoom_has_been_rectified-y1
+        vadjustment.set_value((scroll_y+ret))
+        #
+        ###
+        # finding the new page and the new rectangle
+        if _p == 1:
+            if self.current_rect < len(_rects)-1:
+                self.current_page = _page
+                self.current_rect += 1
+            else:
+                n_pages = self.doc.get_n_pages()
+                if n_pages-1 > _page:
+                    self.current_page += 1
+                else:
+                    self.current_page = 0
+                    self.search_in_page = []
+                self.current_rect = -1
+        elif _p == -1:
+            if self.current_rect > 0:
+                self.current_rect -= 1
+                self.current_page = _page
+            else:
+                n_pages = self.doc.get_n_pages()
+                if _page > 0:
+                    self.current_page -= 1
+                else:
+                    self.current_page = n_pages-1
+                    self.search_in_page = []
+                self.current_rect = -1
+        # apdate
+        da.queue_draw()
         
     def on_exit(self, btn):
         self.window._to_close()
@@ -1062,7 +1244,7 @@ class NewPage(Gtk.Box):
         #
         if self.infobar_pw.get_visible():
             self.infobar_pw.hide()
-        #
+        # toc
         self.create_index(self.doc)
         #
         self._pad_around_page = 10
@@ -1087,6 +1269,9 @@ class NewPage(Gtk.Box):
         self.event_controller_key.connect('key-released', self.on_da_key_pressed, 0)
         self.window.add_controller(self.event_controller_key)
         
+    # def creare_links(self, page, _n):
+        # self.list_links.append([page, page.get_link_mapping()])
+    
     def populate_annotation_list(self):
         self.list_annotations = []
         for i in range(self.doc.get_n_pages()):
@@ -1097,6 +1282,9 @@ class NewPage(Gtk.Box):
     def on_add_page(self):
         for i in range(self.doc.get_n_pages()):
             page = self.doc.get_page(i)
+            #
+            # # links
+            # self.creare_links(page, i)
             #
             self.populate_annotation_list()
             #
@@ -1158,7 +1346,7 @@ class NewPage(Gtk.Box):
     
     def create_index(self, doc):
         ######
-        # how to check if any or not?
+        # how to check if any or none?
         try:
             iterp = Poppler.IndexIter.new(doc)
         except:
@@ -1296,6 +1484,34 @@ class NewPage(Gtk.Box):
         # page.render(cr)
         page.render_full(cr,False,Poppler.RenderAnnotsFlags.PRINT_ALL)
         #
+        cr.set_line_width(4)
+        cr.set_source_rgb(1.0,0.5,0.5)
+        #
+        if self.search_rect:
+            x1 = self.search_rect.x1
+            y1 = self.search_rect.y1
+            x2 = self.search_rect.x2
+            y2 = self.search_rect.y2
+            x = x1
+            y = page.get_size().height-y1
+            w = x2-x1
+            h = y1-y2
+            cr.rectangle(x,y,w,h)
+            cr.stroke()
+        #
+        # # links
+        # page_link_list = page.get_link_mapping()
+        # for ll in page_link_list:
+            # x1 = ll.area.x1
+            # x2 = ll.area.x2
+            # y1 = ll.area.y1
+            # y2 = ll.area.y2
+            # x = x1
+            # y = page.get_size().height-y1
+            # w = (x2-x1)
+            # h = (y1-y2)
+            # cr.rectangle (x,y,w,h)
+            # cr.stroke()
         #
         ########## text hightlight
         if self._control_pressed == 1 and self.annot_type == 0:
@@ -1454,6 +1670,7 @@ class NewPage(Gtk.Box):
                 if self.annot_type != 7:
                     _annot.set_opacity(_color.alpha)
             # 
+            _annot.set_border_width(self.border_width_cb.get_active()+1)
             page.add_annot(_annot)
             # set the content
             _annot.set_contents(_txt)
@@ -1704,6 +1921,7 @@ class NewPage(Gtk.Box):
                     self.left_click_setted = 1
                     # reset
                     self.selected_text = ""
+                    self.search_rect = None
                     # remove the selection on the text
                     da.queue_draw()
                 return
@@ -1716,7 +1934,7 @@ class NewPage(Gtk.Box):
             # reset
             self.left_click_setted = 0
         #
-        ##### funzione rimpiazzo
+        #####
         _annot = self.find_annot(da, x , y)
         _annot_text = None
         if _annot:
@@ -1724,6 +1942,27 @@ class NewPage(Gtk.Box):
         #
         if _annot_text == None:
             return
+            # if _annot:
+                # if _annot.annot.get_annot_type() == Poppler.AnnotType.LINK:
+                    # _rect = _annot.annot.get_rectangle()
+                    # page = self.doc.get_page(_annot.annot.get_page_index())
+                    # _list = page.get_link_mapping()
+                    # for el in _list:
+                        # if (el.area.x1==_annot.annot.get_rectangle().x1) and \
+                        # (el.area.x2==_annot.annot.get_rectangle().x2) and \
+                        # (el.area.y1==_annot.annot.get_rectangle().y1) and \
+                        # (el.area.y2==_annot.annot.get_rectangle().y2):
+                            # if el.action.type == Poppler.ActionType.GOTO_DEST:
+                                # page_num = el.action.goto_dest.dest.page_num
+                                # print("1769 page num", el.action.goto_dest.dest.page_num)#, el.action.goto_dest.title)
+                                # print("1769", el.action.goto_dest.dest.type)
+                                # print("1769 top", el.action.goto_dest.dest.top)
+                                # print("1769 bottom", el.action.goto_dest.dest.bottom)
+                                # print("1769 left", el.action.goto_dest.dest.left)
+                                # print("1769 right", el.action.goto_dest.dest.right)
+                                # print("1769 named", el.action.goto_dest.dest.named_dest)
+                            # break
+            # return
         if _annot_text == "" or _annot_text != None:
         # else:
             MyDialog("Annotation", _annot_text, self.window)
