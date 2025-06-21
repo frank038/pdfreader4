@@ -16,6 +16,7 @@ Features:
 - navigation
 - opens pdf files with password
 - text selection: ctrl+left mouse button
+- searching (partial implementation; can search only whole words)
 - annotations: text, square, circle, free text, stamp (with custom image of type png); except for the text annotation (just click in the page whatever you want), the other ones works this way: after having chosen the type of the annotation, press the left mouse button in the page (the starting point) and drag; release the mouse button
 - annotations: can be added (from toolbar) or removed (right mouse button on it); the colour of the annotation icon to be added can be changed
 - annotations: the esc key cancel the choise
